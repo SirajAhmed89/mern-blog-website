@@ -46,12 +46,23 @@ app.use(helmet({
 })); // Set security HTTP headers
 app.use(mongoSanitize()); // Prevent NoSQL injection
 
-// CORS configuration
+// CORS configuration — support multiple allowed origins via comma-separated CLIENT_URL
+const rawOrigins = process.env.CLIENT_URL || 'http://localhost:5173';
+const allowedOrigins = rawOrigins.split(',').map(o => o.trim());
+
 const corsOptions = {
-  origin: process.env.CLIENT_URL || 'http://localhost:5173',
+  origin: (origin, callback) => {
+    // Allow requests with no origin (mobile apps, curl, Postman)
+    if (!origin) return callback(null, true);
+    if (allowedOrigins.includes(origin)) return callback(null, true);
+    callback(new Error(`CORS: origin ${origin} not allowed`));
+  },
   credentials: true,
 };
 app.use(cors(corsOptions));
+
+// Handle preflight requests for all routes
+app.options('*', cors(corsOptions));
 
 // Body parser middleware
 app.use(express.json({ limit: '10mb' }));
@@ -99,15 +110,10 @@ app.use('/api/analytics', analyticsRoutes);
 // Serve static files (uploads) – covers all subfolders: blog, avatars, categories, misc
 app.use('/uploads', cors(corsOptions), express.static('uploads', {
   setHeaders: (res, filePath) => {
-    // Allow Google to index blog images
     if (filePath.includes('/blog/')) {
       res.setHeader('X-Robots-Tag', 'index, follow');
     }
-    // Cache images for 7 days
     res.setHeader('Cache-Control', 'public, max-age=604800');
-    // CORS headers for images
-    res.setHeader('Access-Control-Allow-Origin', process.env.CLIENT_URL || 'http://localhost:5173');
-    res.setHeader('Access-Control-Allow-Credentials', 'true');
   },
 }));
 
